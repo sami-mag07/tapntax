@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tapntax"
-version = "0.1.0"
+version = "0.1.1"
 description = "A card payment becomes one question, and one tap files the expense."
 readme = "README.md"
 requires-python = ">=3.9"

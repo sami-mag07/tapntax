@@ -19,7 +19,7 @@ from .memory import Memory
 from .models import Decision, Hint, Payment
 from .notify import message, send_ntfy, send_webhook
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["Payment", "Decision", "Hint", "Memory", "Ledger", "decide", "learn",
            "message", "send_ntfy", "send_webhook", "AUTO_LIMIT",
            "CONFIRMATIONS_FOR_AUTO", "__version__"]
