@@ -9,7 +9,10 @@ shown exactly why the app stopped asking.
 from __future__ import annotations
 
 import json
+import os
 import statistics
+import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +26,10 @@ class Memory:
         self.path = Path(path) if path else None
         self.data: dict[str, Any] = data or {"schema": SCHEMA, "merchants": {}}
         self.data.setdefault("merchants", {})
+        # The server is threaded, so two payments from the same merchant can land
+        # at once. Without this, one of them silently overwrites the other's count
+        # and the merchant never reaches the confirmations it actually has.
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------ persistence
     @classmethod
@@ -34,15 +41,28 @@ class Memory:
             return cls(None, p)
 
     def save(self, path: str | Path | None = None) -> None:
+        """Write through a temporary file, so a crash mid-write cannot leave the
+        memory truncated. A half written memory means the app starts asking about
+        merchants it had already learned."""
         target = Path(path) if path else self.path
         if not target:
             raise ValueError("no path to save to")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(self.data, indent=1, ensure_ascii=False))
+        with self._lock:
+            payload = json.dumps(self.data, indent=1, ensure_ascii=False)
+        fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            os.replace(tmp, target)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
     # ----------------------------------------------------------------- lookup
     def get(self, key: str) -> dict | None:
-        return self.data["merchants"].get(key)
+        with self._lock:
+            return self.data["merchants"].get(key)
 
     def typical(self, key: str) -> float | None:
         """The amount this merchant usually costs, as a median so one big trip
@@ -57,35 +77,40 @@ class Memory:
                category: str | None = None) -> dict:
         """One confirmed answer. A changed answer resets the count, because the
         user just told us the old rule was wrong."""
-        m = self.data["merchants"]
-        e = m.setdefault(key, {"purpose": purpose, "count": 0, "amounts": [],
-                               "category": category, "auto_filed": 0, "revoked": 0})
-        if e["purpose"] != purpose:
-            e.update(purpose=purpose, count=0, amounts=[], auto_filed=0)
-        e["count"] += 1
-        e["amounts"] = (e["amounts"] + [round(float(amount), 2)])[-12:]
-        if category:
-            e["category"] = category
-        return e
+        with self._lock:
+            m = self.data["merchants"]
+            e = m.setdefault(key, {"purpose": purpose, "count": 0, "amounts": [],
+                                   "category": category, "auto_filed": 0, "revoked": 0})
+            if e["purpose"] != purpose:
+                e.update(purpose=purpose, count=0, amounts=[], auto_filed=0)
+            e["count"] += 1
+            e["amounts"] = (e["amounts"] + [round(float(amount), 2)])[-12:]
+            if category:
+                e["category"] = category
+            return dict(e)
 
     def note_auto(self, key: str) -> None:
-        e = self.get(key)
-        if e:
-            e["auto_filed"] = e.get("auto_filed", 0) + 1
+        with self._lock:
+            e = self.data["merchants"].get(key)
+            if e:
+                e["auto_filed"] = e.get("auto_filed", 0) + 1
 
     def revoke(self, key: str) -> dict | None:
         """The user took an automatic entry back. That is the strongest signal we
         get, so the merchant goes back to being asked about."""
-        e = self.get(key)
-        if not e:
-            return None
-        e["revoked"] = e.get("revoked", 0) + 1
-        e["count"] = 0
-        e["auto_filed"] = 0
-        return e
+        with self._lock:
+            e = self.data["merchants"].get(key)
+            if not e:
+                return None
+            e["revoked"] = e.get("revoked", 0) + 1
+            e["count"] = 0
+            e["auto_filed"] = 0
+            return dict(e)
 
     def forget(self, key: str) -> bool:
-        return self.data["merchants"].pop(key, None) is not None
+        with self._lock:
+            return self.data["merchants"].pop(key, None) is not None
 
     def __len__(self) -> int:
-        return len(self.data["merchants"])
+        with self._lock:
+            return len(self.data["merchants"])

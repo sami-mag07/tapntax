@@ -10,6 +10,8 @@ sees those entries before the year closes, not after.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -117,10 +119,20 @@ class Ledger:
 
     # ----------------------------------------------------------------- helpers
     def _flush(self) -> None:
+        """Called with the lock held. Writes through a temporary file so an
+        interrupted write cannot destroy the entries already recorded."""
         if not self.path:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.entries, indent=1, ensure_ascii=False))
+        payload = json.dumps(self.entries, indent=1, ensure_ascii=False)
+        fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            os.replace(tmp, self.path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
 
 def _ts(s: str) -> datetime:

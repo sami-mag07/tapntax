@@ -92,7 +92,27 @@ python3 -m tapntax.server 8799
 
 Environment: `TAPNTAX_STATE` (default `.tapntax`), `TAPNTAX_LANG` (`de` or `en`),
 `TAPNTAX_RATE` (marginal rate for the weekly estimate, default `0.42`),
-`TAPNTAX_NTFY_TOPIC`, `TAPNTAX_WEBHOOK`.
+`TAPNTAX_NTFY_TOPIC`, `TAPNTAX_WEBHOOK`, `TAPNTAX_TOKEN`, `TAPNTAX_ORIGIN`,
+`TAPNTAX_BIND`.
+
+### Before you expose it
+
+`/v1/entries` is somebody's spending, so the defaults are closed rather than
+convenient.
+
+- **Token.** Set `TAPNTAX_TOKEN` and send `Authorization: Bearer <token>`. It is
+  compared in constant time. Without a token the server binds to `127.0.0.1` only and
+  refuses to start on any other address, which is the right shape for a phone
+  reaching it through a tunnel.
+- **CORS is off.** There is no wildcard. Set `TAPNTAX_ORIGIN` to the one page you
+  serve if a browser needs to call it.
+- **Health stays open** so a load balancer can probe it. It returns counts, never
+  entries.
+- Bodies over 64 KB are refused, and state is written through a temporary file so an
+  interrupted write cannot truncate what was already learned.
+
+None of this makes it a bank. It is a demo server that is safe to put behind a
+tunnel, and the library underneath is what belongs in your own backend.
 
 The response to `POST /v1/payment` contains a `shortcut` object with just
 `notification` and `actions`, so an iPhone automation can read it with no parsing.
@@ -121,12 +141,12 @@ test suite without anything around it.
 python3 -m unittest discover -s tests -t .
 ```
 
-26 tests, and the ones under `RulesThatMustNotBend` are the specification. If one of
+33 tests, and the ones under `RulesThatMustNotBend` are the specification. If one of
 those goes red the product is wrong, not the test.
 
 ## Status and licence
 
-Version 0.1.0, built at the Cursor Berlin hackathon at Taxfix on 17 September 2026 by
+Version 0.1.1, built at the Cursor Berlin hackathon at Taxfix on 17 September 2026 by
 Sami Magdouli and Malek. MIT licence, so take it, fork it, ship it.
 
 This is software, not tax advice. The rules encoded here follow German practice as
