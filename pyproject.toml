@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tapntax"
+version = "0.1.0"
+description = "A card payment becomes one question, and one tap files the expense."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{name = "Sami Magdouli"}]
+keywords = ["tax", "expenses", "apple pay", "psd2", "bookkeeping"]
+dependencies = []
+
+[project.urls]
+Source = "https://github.com/sami-mag07/tapntax"
+
+[project.scripts]
+tapntax = "tapntax.server:main"
+
+[tool.setuptools]
+packages = ["tapntax"]
